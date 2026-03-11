@@ -56,6 +56,7 @@ const authHook: AuthHook = async (req, next) => {
 const handle = createNodeHandler(tools, handleCall, {
   prefix: "/explorer",
   title: "My MCP Explorer",
+  allowExecute: true,
   authHook,
 });
 

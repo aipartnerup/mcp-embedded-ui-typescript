@@ -44,7 +44,7 @@ Requires Node.js 18+ (or Bun/Deno with Web API support). **Zero runtime dependen
 ```ts
 import { createHandler } from "mcp-embedded-ui";
 
-const handler = createHandler(tools, handleCall, { title: "My Explorer" });
+const handler = createHandler(tools, handleCall, { title: "My Explorer", allowExecute: true });
 
 // Use with any framework that supports Request/Response:
 // Bun.serve({ fetch: (req) => handler(req, "/explorer") });
@@ -60,6 +60,7 @@ import { createNodeHandler } from "mcp-embedded-ui";
 const handle = createNodeHandler(tools, handleCall, {
   prefix: "/explorer",
   title: "My Explorer",
+  allowExecute: true,
 });
 
 http.createServer(handle).listen(8000);
@@ -98,7 +99,7 @@ const handleCall: ToolCallHandler = async (name, args) => {
 };
 
 // 3. Create and start the server
-const handle = createNodeHandler(tools, handleCall, { prefix: "/explorer" });
+const handle = createNodeHandler(tools, handleCall, { prefix: "/explorer", allowExecute: true });
 http.createServer(handle).listen(8000);
 ```
 
@@ -119,6 +120,7 @@ const authHook: AuthHook = async (req, next) => {
 // Pass authHook to enable, omit to disable
 const handle = createNodeHandler(tools, handleCall, {
   prefix: "/explorer",
+  allowExecute: true,
   authHook,
 });
 ```
@@ -140,7 +142,7 @@ async function getTools(): Promise<Tool[]> {
   return await registry.asyncListTools();
 }
 
-const handler = createHandler(getTools, handleCall);
+const handler = createHandler(getTools, handleCall, { allowExecute: true });
 ```
 
 ## API
@@ -159,7 +161,7 @@ const handler = createHandler(getTools, handleCall);
 |-----------|------|---------|-------------|
 | `tools` | `Tool[] \| () => Tool[] \| () => Promise<Tool[]>` | _required_ | MCP Tool objects |
 | `handleCall` | `ToolCallHandler` | _required_ | `async (name, args) => [content, isError, traceId?]` |
-| `allowExecute` | `boolean` | `true` | Enable/disable tool execution (enforced server-side) |
+| `allowExecute` | `boolean` | `false` | Enable/disable tool execution (enforced server-side) |
 | `authHook` | `AuthHook` | — | Middleware: `(req, next) => Promise<Response>` |
 | `title` | `string` | `"MCP Tool Explorer"` | Page title (HTML-escaped automatically) |
 | `projectName` | `string` | — | Project name shown in footer |

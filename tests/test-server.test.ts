@@ -125,10 +125,10 @@ describe("Explorer page", () => {
     expect(text).toContain("var executeEnabled = false;");
   });
 
-  it("defaults allow_execute to true via config", async () => {
+  it("defaults allow_execute to false via config", async () => {
     const resp = await request("GET", "/");
     const text = await resp.text();
-    expect(text).toContain("var executeEnabled = true;");
+    expect(text).toContain("var executeEnabled = false;");
   });
 });
 
@@ -188,6 +188,7 @@ describe("Call tool", () => {
   it("succeeds with content and trace id", async () => {
     const resp = await request("POST", "/tools/echo/call", {
       body: { msg: "hi" },
+      config: { allowExecute: true },
     });
     expect(resp.status).toBe(200);
     const data = await resp.json();
@@ -197,19 +198,19 @@ describe("Call tool", () => {
   });
 
   it("returns error call with status 500", async () => {
-    const resp = await request("POST", "/tools/boom/call", { body: {} });
+    const resp = await request("POST", "/tools/boom/call", { body: {}, config: { allowExecute: true } });
     expect(resp.status).toBe(500);
     const data = await resp.json();
     expect(data.isError).toBe(true);
   });
 
   it("returns 404 for missing tool", async () => {
-    const resp = await request("POST", "/tools/nope/call", { body: {} });
+    const resp = await request("POST", "/tools/nope/call", { body: {}, config: { allowExecute: true } });
     expect(resp.status).toBe(404);
   });
 
   it("treats invalid JSON body as empty dict", async () => {
-    const handler = createHandler(TOOLS, fakeHandler);
+    const handler = createHandler(TOOLS, fakeHandler, { allowExecute: true });
     const resp = await handler(
       new Request("http://localhost/tools/echo/call", {
         method: "POST",
@@ -265,7 +266,7 @@ describe("Auth hook", () => {
     const resp = await request("POST", "/tools/echo/call", {
       body: { msg: "hi" },
       headers: { Authorization: "Bearer valid-token" },
-      config: { authHook },
+      config: { allowExecute: true, authHook },
     });
     expect(resp.status).toBe(200);
   });
@@ -277,7 +278,7 @@ describe("Auth hook", () => {
 
     const resp = await request("POST", "/tools/echo/call", {
       body: {},
-      config: { authHook },
+      config: { allowExecute: true, authHook },
     });
     expect(resp.status).toBe(401);
     const data = await resp.json();
@@ -291,7 +292,7 @@ describe("Auth hook", () => {
 
     const resp = await request("POST", "/tools/echo/call", {
       body: {},
-      config: { authHook },
+      config: { allowExecute: true, authHook },
     });
     expect(resp.status).toBe(401);
     const data = await resp.json();
@@ -306,7 +307,7 @@ describe("Auth hook", () => {
       throw new Error("no auth");
     };
 
-    const config = { authHook };
+    const config = { allowExecute: true, authHook };
     expect((await request("GET", "/", { config })).status).toBe(200);
     expect((await request("GET", "/tools", { config })).status).toBe(200);
     expect((await request("GET", "/tools/echo", { config })).status).toBe(200);
@@ -320,7 +321,7 @@ describe("Auth hook", () => {
 
 describe("Trace ID", () => {
   it("omits _meta when trace_id is undefined", async () => {
-    const resp = await request("POST", "/tools/boom/call", { body: {} });
+    const resp = await request("POST", "/tools/boom/call", { body: {}, config: { allowExecute: true } });
     const data = await resp.json();
     expect(data).not.toHaveProperty("_meta");
   });
@@ -378,6 +379,7 @@ describe("Async tools callable", () => {
     const resp = await request("POST", "/tools/echo/call", {
       tools: getTools,
       body: { msg: "hello" },
+      config: { allowExecute: true },
     });
     expect(resp.status).toBe(200);
     expect((await resp.json()).content[0].text).toBe("echo: hello");
@@ -397,6 +399,7 @@ describe("Handler exception", () => {
     const resp = await request("POST", "/tools/echo/call", {
       body: { msg: "hi" },
       handleCall: throwingHandler,
+      config: { allowExecute: true },
     });
     expect(resp.status).toBe(500);
     const data = await resp.json();
@@ -617,7 +620,7 @@ describe("createHandler with prefix", () => {
   });
 
   it("handles tool call with prefix", async () => {
-    const handler = createHandler(TOOLS, fakeHandler);
+    const handler = createHandler(TOOLS, fakeHandler, { allowExecute: true });
     const resp = await handler(
       new Request("http://localhost/explorer/tools/echo/call", {
         method: "POST",

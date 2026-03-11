@@ -137,7 +137,7 @@ export function buildUIRoutes(
   config: UIConfig = {},
 ): Route[] {
   const {
-    allowExecute = true,
+    allowExecute = false,
     authHook,
     title = "MCP Tool Explorer",
     projectName,

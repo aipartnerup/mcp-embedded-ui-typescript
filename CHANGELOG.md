@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-03-11
+
+### Added
+
+- **Dark mode** — theme toggle button with light/dark switching, `localStorage` persistence, and system preference auto-detection (from updated shared HTML template).
+
+### Changed
+
+- **`allowExecute` default changed to `false`** — secure by default; callers must explicitly pass `allowExecute: true` to enable tool execution.
+- README and CHANGELOG updated to reflect new default.
+
 ## [0.2.0] - 2026-03-10
 
 ### Removed
