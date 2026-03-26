@@ -52,7 +52,7 @@
     "type": "git",
     "url": "https://github.com/aiperceivable/mcp-embedded-ui-typescript.git"
   },
-  "homepage": "https://github.com/aiperceivable/mcp-embedded-ui",
+  "homepage": "https://aiperceivable.github.io/mcp-embedded-ui/",
   "bugs": {
     "url": "https://github.com/aiperceivable/mcp-embedded-ui-typescript/issues"
   }
