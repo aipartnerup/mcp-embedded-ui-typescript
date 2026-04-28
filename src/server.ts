@@ -5,6 +5,9 @@
  * by method + pathname (Node http, Express, Hono, etc.).
  */
 
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
+
 import { renderExplorerHtml } from "./html.js";
 import type {
   CallResult,
@@ -16,6 +19,29 @@ import type {
   ToolsProvider,
   UIConfig,
 } from "./types.js";
+
+const ajv = new Ajv2020({ allErrors: true, strict: false });
+addFormats(ajv);
+
+interface ValidationError {
+  path: string;
+  message: string;
+  keyword?: string;
+}
+
+function validateArgs(
+  schema: Record<string, unknown> | null | undefined,
+  data: unknown,
+): ValidationError[] {
+  if (!schema || Object.keys(schema).length === 0) return [];
+  const validate = ajv.compile(schema);
+  if (validate(data)) return [];
+  return (validate.errors ?? []).map((e) => ({
+    path: e.instancePath || "",
+    message: e.message ?? "validation failed",
+    keyword: e.keyword,
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -174,6 +200,43 @@ export function buildUIRoutes(
     },
   };
 
+  const validateTool: Route = {
+    method: "POST",
+    pattern: "/tools/:name/validate",
+    handler: async (req, params) => {
+      const byName = await resolveToolsByName(tools);
+      const tool = byName.get(params.name);
+      if (!tool) {
+        return jsonResponse({ error: `Tool not found: ${params.name}` }, 404);
+      }
+
+      const reqWithFlags = req as IncomingRequest & {
+        body?: unknown;
+        bodyParseError?: boolean;
+      };
+      if (reqWithFlags.bodyParseError) {
+        return jsonResponse(
+          {
+            valid: false,
+            errors: [{
+              path: "",
+              message: "Invalid JSON",
+              keyword: "format",
+            }],
+          },
+          400,
+        );
+      }
+
+      const body = (reqWithFlags.body ?? {}) as Record<string, unknown>;
+      const errors = validateArgs(tool.inputSchema, body);
+      if (errors.length === 0) {
+        return jsonResponse({ valid: true });
+      }
+      return jsonResponse({ valid: false, errors });
+    },
+  };
+
   const callTool: Route = {
     method: "POST",
     pattern: "/tools/:name/call",
@@ -213,7 +276,7 @@ export function buildUIRoutes(
     },
   };
 
-  return [explorerPage, listTools, callTool, toolDetailRoute];
+  return [explorerPage, listTools, validateTool, callTool, toolDetailRoute];
 }
 
 // ---------------------------------------------------------------------------
@@ -257,7 +320,10 @@ export function createHandler(
       if (params === null) continue;
 
       // Convert Web Request to IncomingRequest shape
-      const incomingReq: IncomingRequest & { body?: unknown } = {
+      const incomingReq: IncomingRequest & {
+        body?: unknown;
+        bodyParseError?: boolean;
+      } = {
         method: req.method,
         url: req.url,
         headers: Object.fromEntries(req.headers.entries()),
@@ -268,6 +334,7 @@ export function createHandler(
           incomingReq.body = await req.json();
         } catch {
           incomingReq.body = {};
+          incomingReq.bodyParseError = true;
         }
       }
 
@@ -322,14 +389,19 @@ export function createNodeHandler(
         const params = matchRoute(route.pattern, pathname);
         if (params === null) continue;
 
-        const incomingReq: IncomingRequest & { body?: unknown } = {
+        const incomingReq: IncomingRequest & {
+          body?: unknown;
+          bodyParseError?: boolean;
+        } = {
           method,
           url: req.url,
           headers: req.headers as Record<string, string | string[] | undefined>,
         };
 
         if (method === "POST") {
-          incomingReq.body = await readJsonBody(req);
+          const parsed = await readJsonBody(req);
+          incomingReq.body = parsed.body;
+          if (parsed.parseError) incomingReq.bodyParseError = true;
         }
 
         const response = await route.handler(incomingReq, params);
@@ -378,18 +450,23 @@ function matchRoute(
 
 function readJsonBody(
   req: import("node:http").IncomingMessage,
-): Promise<Record<string, unknown>> {
+): Promise<{ body: Record<string, unknown>; parseError: boolean }> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString();
+      if (raw.length === 0) {
+        resolve({ body: {}, parseError: false });
+        return;
+      }
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString()));
+        resolve({ body: JSON.parse(raw), parseError: false });
       } catch {
-        resolve({});
+        resolve({ body: {}, parseError: true });
       }
     });
-    req.on("error", () => resolve({}));
+    req.on("error", () => resolve({ body: {}, parseError: true }));
   });
 }
 

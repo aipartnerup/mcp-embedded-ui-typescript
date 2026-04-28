@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-04-28
+
+### Added
+
+- **`POST /tools/:name/validate` endpoint** — implements F7 from the spec. Validates request args against the tool's `inputSchema` without invoking the handler, returns `{valid: true}` or `{valid: false, errors: [...]}`. Not gated by `allowExecute` or `authHook` (per F7 spec). Adds `ajv` + `ajv-formats` dependencies.
+- **`explorer.html`** — synced from spec repo; gains the Validate button next to Execute.
+
+### Changed
+
+- `createHandler` and `createNodeHandler` now flag `bodyParseError` on the internal request when JSON parsing fails. The `/call` route still falls back to `{}` (unchanged); the new `/validate` route uses the flag to return 400.
+
 ## [0.3.2] - 2026-03-26
 
 ### Changed

@@ -223,6 +223,164 @@ describe("Call tool", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Validate tool — F7
+// ---------------------------------------------------------------------------
+
+describe("Validate tool", () => {
+  const schemaTool = fakeTool("echo", "Echo back", {
+    type: "object",
+    properties: {
+      city: { type: "string" },
+      count: { type: "integer" },
+    },
+    required: ["city"],
+  });
+  const noSchemaTool = fakeTool("noschema", "No schema", {});
+  const VTOOLS: Tool[] = [schemaTool, noSchemaTool];
+
+  it("returns valid:true for matching input", async () => {
+    const resp = await request("POST", "/tools/echo/validate", {
+      tools: VTOOLS,
+      body: { city: "Paris" },
+    });
+    expect(resp.status).toBe(200);
+    expect(await resp.json()).toEqual({ valid: true });
+  });
+
+  it("returns valid:false when required field missing", async () => {
+    const resp = await request("POST", "/tools/echo/validate", {
+      tools: VTOOLS,
+      body: {},
+    });
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+    expect(data.valid).toBe(false);
+    expect(
+      data.errors.some((e: { keyword: string }) => e.keyword === "required"),
+    ).toBe(true);
+  });
+
+  it("flags wrong types with /path pointer", async () => {
+    const resp = await request("POST", "/tools/echo/validate", {
+      tools: VTOOLS,
+      body: { city: "Paris", count: "not-int" },
+    });
+    expect(resp.status).toBe(200);
+    const data = await resp.json();
+    expect(data.valid).toBe(false);
+    const typeErr = data.errors.find(
+      (e: { keyword: string }) => e.keyword === "type",
+    );
+    expect(typeErr).toBeDefined();
+    expect(typeErr.path).toBe("/count");
+  });
+
+  it("returns multiple errors in one response", async () => {
+    const multi = fakeTool("multi", "M", {
+      type: "object",
+      properties: { a: { type: "integer" }, b: { type: "integer" } },
+      required: ["a", "b"],
+    });
+    const resp = await request("POST", "/tools/multi/validate", {
+      tools: [multi],
+      body: {},
+    });
+    const data = await resp.json();
+    expect(data.valid).toBe(false);
+    expect(data.errors.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("returns 404 for unknown tool", async () => {
+    const resp = await request("POST", "/tools/nope/validate", {
+      tools: VTOOLS,
+      body: {},
+    });
+    expect(resp.status).toBe(404);
+    expect((await resp.json()).error).toContain("Tool not found");
+  });
+
+  it("returns 400 on invalid JSON body", async () => {
+    const handler = createHandler(VTOOLS, fakeHandler);
+    const resp = await handler(
+      new Request("http://localhost/tools/echo/validate", {
+        method: "POST",
+        body: "not json",
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(resp.status).toBe(400);
+    const data = await resp.json();
+    expect(data.valid).toBe(false);
+    expect(data.errors[0].keyword).toBe("format");
+    expect(data.errors[0].path).toBe("");
+  });
+
+  it("treats missing inputSchema as always-valid", async () => {
+    const resp = await request("POST", "/tools/noschema/validate", {
+      tools: VTOOLS,
+      body: { anything: 123 },
+    });
+    expect(resp.status).toBe(200);
+    expect(await resp.json()).toEqual({ valid: true });
+  });
+
+  it("ignores allowExecute=false", async () => {
+    const resp = await request("POST", "/tools/echo/validate", {
+      tools: VTOOLS,
+      body: { city: "Paris" },
+      config: { allowExecute: false },
+    });
+    expect(resp.status).toBe(200);
+    expect(await resp.json()).toEqual({ valid: true });
+  });
+
+  it("does not invoke authHook", async () => {
+    let calls = 0;
+    const auth: AuthHook = async (_req, _next) => {
+      calls += 1;
+      throw new Error("nope");
+    };
+    const resp = await request("POST", "/tools/echo/validate", {
+      tools: VTOOLS,
+      body: { city: "Paris" },
+      config: { allowExecute: true, authHook: auth },
+    });
+    expect(resp.status).toBe(200);
+    expect(calls).toBe(0);
+  });
+
+  it("does not invoke handleCall", async () => {
+    let calls = 0;
+    const spy: ToolCallHandler = async (_n, _a) => {
+      calls += 1;
+      return [[{ type: "text", text: "ran" }], false, undefined];
+    };
+    await request("POST", "/tools/echo/validate", {
+      tools: VTOOLS,
+      handleCall: spy,
+      body: { city: "Paris" },
+      config: { allowExecute: true },
+    });
+    await request("POST", "/tools/echo/validate", {
+      tools: VTOOLS,
+      handleCall: spy,
+      body: {},
+      config: { allowExecute: true },
+    });
+    expect(calls).toBe(0);
+  });
+
+  it("omits errors key when valid", async () => {
+    const resp = await request("POST", "/tools/echo/validate", {
+      tools: VTOOLS,
+      body: { city: "Paris" },
+    });
+    const data = await resp.json();
+    expect("errors" in data).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // allow_execute=false
 // ---------------------------------------------------------------------------
 
@@ -512,7 +670,7 @@ describe("Project link", () => {
 describe("Backward compatibility", () => {
   it("buildMcpUIRoutes still works", async () => {
     const routes = buildMcpUIRoutes(TOOLS, fakeHandler);
-    expect(routes).toHaveLength(4);
+    expect(routes).toHaveLength(5);
     const toolsRoute = routes.find((r) => r.pattern === "/tools");
     expect(toolsRoute).toBeDefined();
     const resp = await toolsRoute!.handler(
